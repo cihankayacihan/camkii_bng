@@ -1,0 +1,134 @@
+begin model
+begin parameters
+	Nav 		6e23
+	Vol			1e-18
+	Ca_in_conc Ca_in_conc__FREE__
+	CaM_in_conc 750e-6
+	CaMK_in_conc 600e-6 / 6
+	PP1_in_conc 0
+	Ca_in		Ca_in_conc*Nav*Vol 
+	CaM_in		CaM_in_conc*Nav*Vol
+	CaMK_in		CaMK_in_conc*Nav*Vol
+	PP1_in		PP1_in_conc*Nav*Vol
+	
+ 	kon_0		2.5e6/Nav/Vol # units M-1 s-1
+	koff_0		50 # units s-1
+	kon_1		88.25e6/Nav/Vol # units M-1 s-1
+	koff_1		50 # units s-1
+	kon_2		12.5e6/Nav/Vol # units M-1 s-1
+	koff_2		1250 # units s-1
+	kon_3		250e6/Nav/Vol # units M-1 s-1
+	koff_3		1250 # units s-1
+	
+	kon_u		30e6/Nav/Vol # units M-1 s-1
+	kon_p		10e6/Nav/Vol # units M-1 s-1
+	
+	koff_u		2 # units s-1
+	koff_p		0.001 # units s-1
+	
+	koff_u2		4.3
+	koff_p2		0.08
+	
+	K_Ca_u  0.94e-6*Nav*Vol
+	K_Ca_p	0.19e-6*Nav*Vol
+	
+	kcat 1.72
+	Km 11e-6*Nav*Vol
+	
+	k_basal		5e-4 # units s-1
+	r1		1 # units s-1
+	r2		1 # variable units -1
+	r3		r1 * 0.8 # units s-1 normally take as 0.8 x r1
+	r305	10 # s-1
+	
+end parameters
+
+begin molecule types
+	CaM(ca~0~1~2~3~4,camk)
+	# Ca(cam)
+	CaMK(CaM,t286~u~p,t305~u~p,camk6left,camk6right)
+	PP1()
+end molecule types
+
+begin seed species
+	
+	CaMK(CaM,t286~u,t305~u,camk6left!1,camk6right!2).CaMK(CaM,t286~u,t305~u,camk6left!2,camk6right!3).CaMK(CaM,t286~u,t305~u,camk6left!3,camk6right!4).CaMK(CaM,t286~u,t305~u,camk6left!4,camk6right!5).CaMK(CaM,t286~u,t305~u,camk6left!5,camk6right!6).CaMK(CaM,t286~u,t305~u,camk6left!6,camk6right!1) CaMK_in
+	CaM(ca~0,camk) CaM_in	
+	# $Ca(cam) Ca_in
+	PP1() PP1_in
+	
+end seed species
+
+begin observables
+	Molecules Duu CaMK(t286~u,t305~u)
+	Molecules Cu CaMK(CaM!+,t286~u,t305~u)
+	Molecules Cp CaMK(CaM!+,t286~p,t305~u)
+	Molecules Dpu CaMK(CaM,t286~p,t305~u)
+	Molecules Dpp CaMK(CaM,t286~p,t305~p)
+	Molecules Dup CaMK(CaM,t286~u,t305~p)
+	Molecules CaMK_tot CaMK()
+	Molecules P CaMK(t286~p)
+	Molecules P2 CaMK(t305~p)
+	# Molecules Ca Ca(cam)
+	Molecules pp1 PP1()	
+end observables
+
+begin functions
+	koff_p_rate() = koff_p2 / (1+(Ca_in/K_Ca_p)^2)
+	koff_u_rate() =  koff_u2 / (1+(Ca_in/K_Ca_u)^2)
+	P_rate() = kcat * pp1 / (Km + Cp + Dpu + Dpp + Dup)
+    Phospho() = (P) / CaMK_tot
+    Phospho305() = P2 / CaMK_tot
+end functions
+
+begin reaction rules
+	#Ca binding to CaM 1
+	# R1 : CaM(ca,ca,ca,ca,camk) + Ca(cam) <-> CaM(ca!1,ca,ca,ca,camk).Ca(cam!1) kon_0/4,koff_0
+	R1 : CaM(ca~0,camk) <-> CaM(ca~1,camk) kon_0*Ca_in,koff_0
+	
+	# Ca binding to CaM 2
+	# R2 : CaM(ca!1,ca,ca,ca,camk).Ca(cam!1) + Ca(cam) <-> CaM(ca!1,ca!2,ca,ca,camk).Ca(cam!1).Ca(cam!2) kon_1/3,koff_1/2
+	R2 : CaM(ca~1,camk) <-> CaM(ca~2,camk) kon_1*Ca_in,koff_1
+	
+	# Ca binding to CaM 3
+	#R3 : CaM(ca!1,ca!2,ca,ca,camk).Ca(cam!1).Ca(cam!2) + Ca(cam) <-> CaM(ca!1,ca!2,ca!3,ca,camk).Ca(cam!1).Ca(cam!2).Ca(cam!3) kon_2/2,koff_2/3
+	R3 : CaM(ca~2,camk) <-> CaM(ca~3,camk) kon_2*Ca_in,koff_2
+	# Ca binding to CaM 4
+	# R4 : CaM(ca!1,ca!2,ca!3,ca,camk).Ca(cam!1).Ca(cam!2).Ca(cam!3) + Ca(cam) <-> CaM(ca!1,ca!2,ca!3,ca!4,camk).Ca(cam!1).Ca(cam!2).Ca(cam!3).Ca(cam!4) kon_3, koff_3/4
+	R4 : CaM(ca~3,camk) <-> CaM(ca~4,camk) kon_3*Ca_in,koff_3
+	
+	# CaM binding to unphosphorylated CaMKII
+	R5 : CaMK(CaM,t286~u,t305~u) + CaM(ca~4,camk) <-> CaMK(CaM!5,t286~u,t305~u).CaM(ca~4,camk!5) kon_u,koff_u
+	# CaM binding to phosphorylated CaMKII
+	R6 : CaMK(CaM,t286~p,t305~u) + CaM(ca~4,camk) <-> CaMK(CaM!5,t286~p,t305~u).CaM(ca~4,camk!5) kon_p,koff_p
+	
+	# Two step unbinding process for CaM
+	R7 : CaMK(CaM!5,t286~u,t305~u).CaM(ca~4,camk!5) -> \
+	CaMK(CaM,t286~u,t305~u) + CaM(ca~4,camk) koff_u_rate()
+	R8 : CaMK(CaM!5,t286~p,t305~u).CaM(ca~2,camk!5) -> \
+	CaMK(CaM,t286~p,t305~u) + CaM(ca~2,camk) koff_p_rate()
+
+	# T305 phosphorylation 
+	R9 : CaMK(CaM,t286~u,t305~u) -> CaMK(CaM,t286~u,t305~p) k_basal
+	
+	# T286 phosphorylation of Cu by Cu
+	R10 : CaMK(CaM!5,t286~u,t305~u,camk6left!1).CaM(camk!5).CaMK(CaM!4,t286~u,t305~u,camk6right!1).CaM(camk!4) -> \
+	CaMK(CaM!5,t286~p,t305~u,camk6left!1).CaM(camk!5).CaMK(CaM!4,t286~u,t305~u,camk6right!1).CaM(camk!4) r1
+	
+	# T286 phosphorylation of Cu by Cp
+	R11 : CaMK(CaM!5,t286~u,t305~u,camk6left!1).CaM(camk!5).CaMK(CaM!4,t286~p,t305~u,camk6right!1).CaM(camk!4) -> \
+	CaMK(CaM!5,t286~p,t305~u,camk6left!1).CaM(camk!5).CaMK(CaM!4,t286~p,t305~u,camk6right!1).CaM(camk!4) r2
+	
+	# T286 phosphorylation of Cu by Dpu and Dpp
+	R12 : CaMK(CaM!5,t286~u,t305~u,camk6left!1).CaM(camk!5).CaMK(CaM,t286~p,camk6right!1) -> \
+	CaMK(CaM!5,t286~p,t305~u,camk6left!1).CaM(camk!5).CaMK(CaM,t286~p,camk6right!1) r3
+	
+	# Dephosphorylation of CaMKII
+	R13 : CaMK(t286~p) -> CaMK(t286~u) P_rate()
+	R14 : CaMK(t305~p) -> CaMK(t305~u) P_rate()
+	
+	# T305 phosphorylation for pre-phosphorylated 285
+	R15 : CaMK(CaM,t286~p,t305~u) -> CaMK(CaM,t286~p,t305~p) r305
+
+end reaction rules
+end model
